@@ -41,7 +41,9 @@ yarn-error.log*
 next-env.d.ts
 
 # tooling / agents
-.claude/
+.claude/scheduled_tasks.lock
+.claude/agent-memory/
+.claude/local/
 .playwright-mcp/
 
 # debugging screenshots at repo root
@@ -50,3 +52,4 @@ next-env.d.ts
 /showcase-*.png
 /step*.png
 /v2-*.png
+/google-*.png
