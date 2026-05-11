@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# tooling / agents
+.claude/
+.playwright-mcp/
+
+# debugging screenshots at repo root
+/landing-*.png
+/mobile-*.png
+/showcase-*.png
+/step*.png
+/v2-*.png
