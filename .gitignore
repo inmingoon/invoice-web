@@ -46,6 +46,7 @@ next-env.d.ts
 .claude/scheduled_tasks.lock
 .claude/agent-memory/
 .claude/local/
+.claude/settings.local.json
 .playwright-mcp/
 
 # debugging screenshots at repo root
