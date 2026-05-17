@@ -2,6 +2,7 @@ import "server-only";
 
 import { APIErrorCode, Client, isFullPage } from "@notionhq/client";
 
+import { invalidate, memoize } from "@/lib/cache";
 import { InvoiceParseError } from "@/types/invoice";
 import type {
   ExpiredFilter,
@@ -182,7 +183,7 @@ function pageToListItem(pageId: string, props: Properties): InvoiceListItem {
   };
 }
 
-/** Notion row의 access_token rich_text 필드를 재발급. 호출자가 새 토큰 생성·전달, 본 함수는 update만. */
+/** Notion row의 access_token rich_text 필드를 재발급. 호출자가 새 토큰 생성·전달, 본 함수는 update + 캐시 무효화. */
 export async function updateInvoiceToken(
   invoiceId: string,
   newToken: string,
@@ -193,6 +194,7 @@ export async function updateInvoiceToken(
       access_token: { rich_text: [{ text: { content: newToken } }] },
     },
   });
+  invalidate("invoice-stats");
 }
 
 function todayIso(): string {
@@ -303,15 +305,22 @@ export async function listInvoices(
   };
 }
 
+const STATS_TTL_MS = 60_000;
+
 /**
  * 대시보드 KPI 통계. 작은 DB(<500)를 가정해 전체 페이지를 순회한다.
  * - total: 전체 견적서 수
  * - expiringSoon: 오늘 기준 7일 이내 만료 (만료 안 됨 + 7일 이내)
  * - unviewed: status != 'viewed'
  *
- * 안전 캡: 5페이지 × page_size 100 = 500. 초과 시 결과는 절단 — 큰 DB는 Phase D 캐시·집계 도입 필요.
+ * 60초 in-memory 캐시 (`lib/cache.ts`). 토큰 회수·DB 변경 시 invalidate("invoice-stats")로 무효화.
+ * 안전 캡: 5페이지 × page_size 100 = 500. 초과 시 결과는 절단.
  */
-export async function getInvoiceStats(): Promise<InvoiceStats> {
+export function getInvoiceStats(): Promise<InvoiceStats> {
+  return memoize("invoice-stats", STATS_TTL_MS, computeInvoiceStats);
+}
+
+async function computeInvoiceStats(): Promise<InvoiceStats> {
   const dataSourceId = await getDataSourceId();
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);

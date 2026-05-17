@@ -10,6 +10,7 @@ import {
   signSession,
 } from "@/lib/auth/session";
 import { logger } from "@/lib/logger";
+import { LOGIN_LIMIT, getClientIp, tryConsume } from "@/lib/rate-limit";
 
 export type LoginState = { error: string | null };
 
@@ -19,11 +20,28 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** 비밀번호 검증 후 세션 쿠키를 설정. 실패 시 1초 sleep으로 무차별 대입 마찰 추가. */
+/**
+ * 비밀번호 검증 후 세션 쿠키를 설정.
+ * - IP당 분당 5회 rate-limit (Phase D)
+ * - 실패 시 1초 sleep으로 무차별 대입 마찰 추가
+ */
 export async function loginAction(
   _prev: LoginState,
   formData: FormData,
 ): Promise<LoginState> {
+  const ip = await getClientIp();
+  const gate = tryConsume(`login:${ip}`, LOGIN_LIMIT);
+  if (!gate.ok) {
+    logger.warn({
+      event: "ratelimit.deny",
+      scope: "login",
+      ip,
+      retryAfterMs: gate.retryAfterMs,
+    });
+    return {
+      error: `요청이 너무 잦습니다. ${Math.ceil(gate.retryAfterMs / 1000)}초 후 다시 시도해 주세요.`,
+    };
+  }
   const password = formData.get("password");
   if (typeof password !== "string" || password.length === 0) {
     return { error: "비밀번호를 입력하세요." };
@@ -36,7 +54,7 @@ export async function loginAction(
   const ok = await verifyPassword(password, expected);
   if (!ok) {
     await sleep(THROTTLE_MS);
-    logger.warn({ event: "auth.fail" });
+    logger.warn({ event: "auth.fail", ip });
     return { error: "비밀번호가 일치하지 않습니다." };
   }
   const token = await signSession();

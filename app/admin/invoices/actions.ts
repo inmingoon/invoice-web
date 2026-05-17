@@ -7,15 +7,14 @@ import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { logger } from "@/lib/logger";
 import { updateInvoiceToken } from "@/lib/notion";
+import { REGEN_LIMIT, getClientIp, tryConsume } from "@/lib/rate-limit";
 
 export type RegenerateResult =
   | { ok: true }
   | { ok: false; reason: "unauthorized" | "rate_limited" | "failed" };
 
 /**
- * 견적서 access_token 재발급. 호출 시 세션 재검증 → 32B base64url 토큰 생성 → Notion update.
- *
- * Phase D에서 rate-limit이 추가될 자리 (현재는 트로틀 없음 — 세션 가드만).
+ * 견적서 access_token 재발급. 호출 시 세션 재검증 → IP rate-limit → 32B base64url 토큰 생성 → Notion update.
  * revalidatePath로 /admin/invoices와 /invoice/[id] 모두 SSR 재실행 강제.
  */
 export async function regenerateTokenAction(
@@ -26,6 +25,17 @@ export async function regenerateTokenAction(
   if (!(await verifySession(session))) {
     logger.warn({ event: "admin.unauth", action: "regenerate_token" });
     return { ok: false, reason: "unauthorized" };
+  }
+  const ip = await getClientIp();
+  const gate = tryConsume(`regen:${ip}`, REGEN_LIMIT);
+  if (!gate.ok) {
+    logger.warn({
+      event: "ratelimit.deny",
+      scope: "regen",
+      ip,
+      retryAfterMs: gate.retryAfterMs,
+    });
+    return { ok: false, reason: "rate_limited" };
   }
   if (!invoiceId) {
     return { ok: false, reason: "failed" };
