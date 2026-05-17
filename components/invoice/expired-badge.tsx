@@ -14,6 +14,8 @@ export function ExpiredBadge({
 }: {
   expiresAt: Invoice["expiresAt"];
 }) {
+  // 빈 문자열은 만료일 미입력으로 간주 — "" >= "2026-..." 가 false라 fall-through되는 버그 회피
+  if (!expiresAt) return null;
   if (expiresAt >= todayYmd()) return null;
   return <Badge variant="destructive">만료됨</Badge>;
 }

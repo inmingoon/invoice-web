@@ -3,7 +3,6 @@ import "server-only";
 import { APIErrorCode, Client, isFullPage } from "@notionhq/client";
 
 import { invalidate, memoize } from "@/lib/cache";
-import { InvoiceParseError } from "@/types/invoice";
 import type {
   ExpiredFilter,
   Invoice,
@@ -47,8 +46,32 @@ function getRichText(props: Properties, key: string): string {
 
 function getNumber(props: Properties, key: string): number | null {
   const p = props[key];
-  if (!p || p.type !== "number") return null;
-  return (p as unknown as { number: number | null }).number;
+  if (!p) return null;
+  if (p.type === "number") {
+    return (p as unknown as { number: number | null }).number;
+  }
+  if (p.type === "rollup") {
+    const r = (
+      p as unknown as { rollup: { type: string; number?: number | null } }
+    ).rollup;
+    if (r?.type === "number") return r.number ?? null;
+  }
+  if (p.type === "formula") {
+    const f = (
+      p as unknown as { formula: { type: string; number?: number | null } }
+    ).formula;
+    if (f?.type === "number") return f.number ?? null;
+  }
+  return null;
+}
+
+/** 같은 의미의 여러 key를 순서대로 시도. `total` vs `Total` 같은 대소문자 변형 대응. */
+function getNumberAny(props: Properties, ...keys: string[]): number | null {
+  for (const k of keys) {
+    const v = getNumber(props, k);
+    if (v !== null) return v;
+  }
+  return null;
 }
 
 function getDate(props: Properties, key: string): string {
@@ -69,7 +92,13 @@ function isInvoiceStatus(v: string): v is InvoiceStatus {
   return v === "draft" || v === "sent" || v === "viewed";
 }
 
-/** Notion page(견적서 row)를 도메인 Invoice로 매핑. 404/40x → null, 5xx만 throw. items JSON 파싱 실패 시 InvoiceParseError throw. */
+/**
+ * Notion page(견적서 row)를 도메인 Invoice로 매핑.
+ * - 404/40x → null, 5xx만 throw
+ * - items는 Relation 필드 → Items DB query로 line item 행 로드
+ * - subtotal은 Rollup(Sum of 금액), vat·total은 Formula — getNumber가 세 타입 모두 처리
+ * - total은 사용자 Notion에서 "Total"(대문자)로 만들었을 수 있어 fallback
+ */
 export async function getInvoiceById(id: string): Promise<Invoice | null> {
   let page: Awaited<ReturnType<typeof notion.pages.retrieve>>;
   try {
@@ -91,31 +120,17 @@ export async function getInvoiceById(id: string): Promise<Invoice | null> {
 
   const props = page.properties as unknown as Properties;
 
-  const rawItems = getRichText(props, "items");
-  let items: InvoiceItem[];
-  try {
-    const parsed: unknown = JSON.parse(rawItems);
-    if (!Array.isArray(parsed)) throw new Error("items is not an array");
-    items = parsed.map((x): InvoiceItem => {
-      if (!x || typeof x !== "object") throw new Error("item is not an object");
-      const o = x as Record<string, unknown>;
-      if (
-        typeof o.name !== "string" ||
-        typeof o.qty !== "number" ||
-        typeof o.unit_price !== "number"
-      ) {
-        throw new Error("item shape mismatch");
-      }
-      return { name: o.name, qty: o.qty, unitPrice: o.unit_price };
-    });
-  } catch (cause) {
-    throw new InvoiceParseError(id, cause);
-  }
+  const items = await fetchItemsForInvoice(id);
 
   const statusRaw = getSelect(props, "status");
   const status: InvoiceStatus = isInvoiceStatus(statusRaw)
     ? statusRaw
     : "draft";
+
+  const subtotal = getNumber(props, "subtotal") ?? 0;
+  const vat = getNumber(props, "vat") ?? 0;
+  // 합계 컬럼은 `Total`(대문자) 또는 `total` 모두 허용. 둘 다 없으면 subtotal + vat로 폴백.
+  const total = getNumberAny(props, "total", "Total") ?? subtotal + vat;
 
   return {
     id,
@@ -124,9 +139,9 @@ export async function getInvoiceById(id: string): Promise<Invoice | null> {
     issuedAt: getDate(props, "issued_at"),
     expiresAt: getDate(props, "expires_at"),
     items,
-    subtotal: getNumber(props, "subtotal") ?? 0,
-    vat: getNumber(props, "vat") ?? 0,
-    total: getNumber(props, "total") ?? 0,
+    subtotal,
+    vat,
+    total,
     memo: getRichText(props, "memo") || null,
     accessToken: getRichText(props, "access_token"),
     status,
@@ -171,16 +186,86 @@ function pageToListItem(pageId: string, props: Properties): InvoiceListItem {
   const status: InvoiceStatus = isInvoiceStatus(statusRaw)
     ? statusRaw
     : "draft";
+  const subtotal = getNumber(props, "subtotal") ?? 0;
+  const vat = getNumber(props, "vat") ?? 0;
   return {
     id: pageId,
     invoiceNo: getTitle(props, "invoice_no"),
     clientName: getRichText(props, "client_name"),
     issuedAt: getDate(props, "issued_at"),
     expiresAt: getDate(props, "expires_at"),
-    total: getNumber(props, "total") ?? 0,
+    total: getNumberAny(props, "total", "Total") ?? subtotal + vat,
     status,
     accessToken: getRichText(props, "access_token"),
   };
+}
+
+// ----- Items DB 연결 (relational) -----
+
+const ITEMS_BACK_RELATION = "Invoices";
+const ITEMS_NAME_PROP = "항목명";
+const ITEMS_QTY_PROP = "수량";
+const ITEMS_UNIT_PRICE_PROP = "단가";
+
+let cachedItemsDsId: string | null = null;
+
+/**
+ * Items DB의 data source id를 lazy 캐시.
+ * Invoices DS의 `items` relation 설정에서 target DB id를 읽고,
+ * 그 DB의 첫 data source를 사용. cold start에 2회 추가 API 호출 (이후 캐시).
+ */
+async function getItemsDataSourceId(): Promise<string> {
+  if (cachedItemsDsId) return cachedItemsDsId;
+  const invoicesDsId = await getDataSourceId();
+  const invoicesDs = (await notion.dataSources.retrieve({
+    data_source_id: invoicesDsId,
+  })) as unknown as {
+    properties?: Record<
+      string,
+      { type: string; relation?: { database_id?: string } }
+    >;
+  };
+  const itemsProp = invoicesDs.properties?.items;
+  if (
+    !itemsProp ||
+    itemsProp.type !== "relation" ||
+    !itemsProp.relation?.database_id
+  ) {
+    throw new Error("Invoices DS의 'items' 필드가 relation이 아닙니다");
+  }
+  const itemsDbId = itemsProp.relation.database_id;
+  const itemsDb = (await notion.databases.retrieve({
+    database_id: itemsDbId,
+  })) as unknown as { data_sources?: Array<{ id: string }> };
+  const dsId = itemsDb.data_sources?.[0]?.id;
+  if (!dsId) {
+    throw new Error(`Items DB ${itemsDbId} has no data sources`);
+  }
+  cachedItemsDsId = dsId;
+  return dsId;
+}
+
+/** 특정 invoice id와 relation으로 연결된 모든 Items DB row를 InvoiceItem[]으로 매핑. */
+async function fetchItemsForInvoice(invoiceId: string): Promise<InvoiceItem[]> {
+  const itemsDsId = await getItemsDataSourceId();
+  const res = await notion.dataSources.query({
+    data_source_id: itemsDsId,
+    filter: {
+      property: ITEMS_BACK_RELATION,
+      relation: { contains: invoiceId },
+    },
+  });
+  const items: InvoiceItem[] = [];
+  for (const row of res.results) {
+    if (!isFullPage(row)) continue;
+    const ip = row.properties as unknown as Properties;
+    items.push({
+      name: getTitle(ip, ITEMS_NAME_PROP),
+      qty: getNumber(ip, ITEMS_QTY_PROP) ?? 0,
+      unitPrice: getNumber(ip, ITEMS_UNIT_PRICE_PROP) ?? 0,
+    });
+  }
+  return items;
 }
 
 /** Notion row의 access_token rich_text 필드를 재발급. 호출자가 새 토큰 생성·전달, 본 함수는 update + 캐시 무효화. */
