@@ -26,8 +26,8 @@ export default async function InvoicePage(props: {
   if (!invoice || !token) notFound();
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-6 p-4 md:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <main className="mx-auto w-full max-w-2xl space-y-8 p-4 md:p-8">
+      <div className="flex flex-wrap items-start justify-between gap-6">
         <div className="min-w-0 flex-1">
           <InvoiceSummary invoice={invoice} />
         </div>

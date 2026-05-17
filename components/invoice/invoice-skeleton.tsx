@@ -13,8 +13,8 @@ import {
 /** 견적서 페이지 로딩 동안 표시되는 스켈레톤. page.tsx의 layout(summary + items + totals + download)을 그대로 미러링해 LCP 시 레이아웃 시프트를 막는다. */
 export function InvoiceSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 p-4 md:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="mx-auto w-full max-w-2xl space-y-8 p-4 md:p-8">
+      <div className="flex flex-wrap items-start justify-between gap-6">
         <div className="min-w-0 flex-1">
           <Card>
             <CardHeader>
@@ -70,7 +70,7 @@ export function InvoiceSkeleton() {
         </TableBody>
       </Table>
 
-      <div className="flex flex-col items-end gap-2 text-sm">
+      <div className="flex flex-col items-end gap-3 text-sm">
         <div className="flex w-full max-w-xs justify-between">
           <Skeleton className="h-4 w-12" />
           <Skeleton className="h-4 w-24" />
@@ -79,7 +79,7 @@ export function InvoiceSkeleton() {
           <Skeleton className="h-4 w-12" />
           <Skeleton className="h-4 w-24" />
         </div>
-        <Separator className="my-1 max-w-xs" />
+        <Separator className="my-3 max-w-xs" />
         <div className="flex w-full max-w-xs justify-between">
           <Skeleton className="h-6 w-16" />
           <Skeleton className="h-6 w-28" />
