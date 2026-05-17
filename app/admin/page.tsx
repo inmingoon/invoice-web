@@ -14,6 +14,9 @@ export const metadata: Metadata = {
   title: "대시보드",
 };
 
+// getInvoiceStats가 Notion API를 호출하므로 정적 prerender 금지 — 매 요청마다 실시간 통계 반영.
+export const dynamic = "force-dynamic";
+
 export default async function AdminDashboardPage() {
   const stats = await getInvoiceStats();
   return (
