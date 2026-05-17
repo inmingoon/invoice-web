@@ -61,3 +61,6 @@ next-env.d.ts
 # shrimp task-manager local state
 /shrimp-data/
 /shrimp-rules.md
+
+# git worktrees (isolated workspaces for parallel feature work)
+.worktrees/
