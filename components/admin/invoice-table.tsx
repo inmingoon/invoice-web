@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
+import { InvoiceActionsCell } from "@/components/admin/invoice-actions-cell";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -162,6 +163,7 @@ export function InvoiceTable({
             />
           </TableHead>
           <TableHead className="text-right">상태</TableHead>
+          <TableHead className="text-right">동작</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -189,6 +191,9 @@ export function InvoiceTable({
               </TableCell>
               <TableCell className="text-right">
                 <Badge variant={status.variant}>{status.label}</Badge>
+              </TableCell>
+              <TableCell className="text-right">
+                <InvoiceActionsCell invoice={row} />
               </TableCell>
             </TableRow>
           );

@@ -32,7 +32,7 @@ export class InvoiceParseError extends Error {
   }
 }
 
-/** 관리자 목록용 경량 Invoice — items/memo/accessToken 제외 (필요할 때 getInvoiceById로 단건 조회). */
+/** 관리자 목록용 경량 Invoice — items/memo는 제외하지만 accessToken은 포함 (admin이 링크 공유에 필요). admin 라우트는 middleware로 가드됨. */
 export interface InvoiceListItem {
   id: string;
   invoiceNo: string;
@@ -41,6 +41,7 @@ export interface InvoiceListItem {
   expiresAt: string;
   total: number;
   status: InvoiceStatus;
+  accessToken: string;
 }
 
 export type ExpiredFilter = "all" | "active" | "expired";

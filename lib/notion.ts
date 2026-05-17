@@ -178,7 +178,21 @@ function pageToListItem(pageId: string, props: Properties): InvoiceListItem {
     expiresAt: getDate(props, "expires_at"),
     total: getNumber(props, "total") ?? 0,
     status,
+    accessToken: getRichText(props, "access_token"),
   };
+}
+
+/** Notion row의 access_token rich_text 필드를 재발급. 호출자가 새 토큰 생성·전달, 본 함수는 update만. */
+export async function updateInvoiceToken(
+  invoiceId: string,
+  newToken: string,
+): Promise<void> {
+  await notion.pages.update({
+    page_id: invoiceId,
+    properties: {
+      access_token: { rich_text: [{ text: { content: newToken } }] },
+    },
+  });
 }
 
 function todayIso(): string {

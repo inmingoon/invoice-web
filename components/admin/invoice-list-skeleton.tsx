@@ -19,6 +19,7 @@ export function InvoiceListSkeleton() {
           <TableHead>만료일</TableHead>
           <TableHead className="text-right">총액</TableHead>
           <TableHead className="text-right">상태</TableHead>
+          <TableHead className="text-right">동작</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -41,6 +42,9 @@ export function InvoiceListSkeleton() {
             </TableCell>
             <TableCell className="text-right">
               <Skeleton className="ml-auto h-5 w-16" />
+            </TableCell>
+            <TableCell className="text-right">
+              <Skeleton className="ml-auto h-8 w-44" />
             </TableCell>
           </TableRow>
         ))}
