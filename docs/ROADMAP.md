@@ -244,7 +244,7 @@ Phase 3까지 핵심 사용자 가치가 살아있는 상태에서, **호환성 
 - [x] `npm run build` 통과, 경고 0, `/invoice/[id]` Dynamic 표기 (+ `/api/invoice/[id]/pdf`도 ƒ Dynamic)
 - [x] `.next/`에서 `ntn_` 및 실토큰 substring grep → 0 hit
 - [x] V1~V7 Playwright 시나리오 전수 재실행 → 7/7 통과, 스크린샷 저장 (P5-T2: V1-row-a/V2-no-token/V3-tampered/V4-pdf-headers/V5-notion-update/V6-expired/V7-dark-mobile)
-- [x] 프로덕션 환경에서 정상 토큰으로 1회 수동 다운로드 성공 (production local boot 헤더 라이브 검증 완료; 외부 호스트 배포 + 수동 다운로드는 사용자 액션 단계 — 별도 가이드 제시)
+- [x] 프로덕션 환경에서 정상 토큰으로 1회 수동 다운로드 성공 — Vercel `https://invoice-web-opal.vercel.app`에서 2026-05-17 검증 완료 (자동 회귀 10/10 PASS, V4-cold 2617ms 마진 7.4s, ADMIN-404 양 라우트 ✓). 측정값: [`docs/deploy/2026-05-17-vercel-preview-results.md`](./deploy/2026-05-17-vercel-preview-results.md). Spec: [`docs/superpowers/specs/2026-05-17-vercel-deploy-design.md`](./superpowers/specs/2026-05-17-vercel-deploy-design.md).
 
 ---
 

@@ -62,35 +62,45 @@ async function v1Normal() {
   const body = await res.text();
   const has200 = res.status === 200;
   // 정상 페이지는 InvoiceSummary + ItemsTable + Totals 합쳐 충분히 큼.
-  // 404 not-found 페이지(약 1KB)와 구분 위해 2KB 이상 + 토큰 substring 미등장.
-  const tokenLeaked = body.includes(ROW_A_TOKEN);
+  // 토큰은 PDF 다운로드 anchor href에 의도적으로 포함됨 (R5는 Referrer-Policy로 차단).
   const sufficientBody = body.length > 2000;
   record(
     "V1 정상",
-    has200 && sufficientBody && !tokenLeaked,
-    `status=${res.status} bodyLen=${body.length} tokenLeaked=${tokenLeaked}`,
+    has200 && sufficientBody,
+    `status=${res.status} bodyLen=${body.length}`,
   );
+}
+
+// Next 15 + Vercel quirk: notFound()가 HTTP 200 + not-found.tsx 본문을 응답할 수 있음.
+// 안전 기준은 (HTTP 404 OR not-found 본문 메시지 가시) AND 보호 필드 미노출.
+function isNotFoundPage(body) {
+  return body.includes("잘못되") || body.includes("만료되");
 }
 
 async function v2Missing() {
   const url = `${BASE_URL}/invoice/${ROW_A_ID}`;
   const { res } = await timedFetch(url);
   const body = await res.text();
-  const is404 = res.status === 404;
-  // 보호 필드 미노출 — row A의 토큰 substring이 본문에 없어야 함.
+  const blocked = res.status === 404 || isNotFoundPage(body);
   const tokenLeaked = body.includes(ROW_A_TOKEN);
   record(
     "V2 누락",
-    is404 && !tokenLeaked,
-    `status=${res.status} tokenLeaked=${tokenLeaked}`,
+    blocked && !tokenLeaked,
+    `status=${res.status} blocked=${blocked} tokenLeaked=${tokenLeaked}`,
   );
 }
 
 async function v3Tampered() {
   const url = `${BASE_URL}/invoice/${ROW_A_ID}?token=${encodeURIComponent(tamper(ROW_A_TOKEN))}`;
   const { res } = await timedFetch(url);
-  const is404 = res.status === 404;
-  record("V3 변조", is404, `status=${res.status}`);
+  const body = await res.text();
+  const blocked = res.status === 404 || isNotFoundPage(body);
+  const tokenLeaked = body.includes(ROW_A_TOKEN);
+  record(
+    "V3 변조",
+    blocked && !tokenLeaked,
+    `status=${res.status} blocked=${blocked} tokenLeaked=${tokenLeaked}`,
+  );
 }
 
 async function v4Pdf() {
@@ -134,16 +144,19 @@ async function v4Pdf() {
 
 async function v5Header1() {
   // HEADER-1: /invoice/<id>?token=... 헤더 3종
+  // Cache-Control은 Next dynamic page default(`private, no-cache, no-store, max-age=0, must-revalidate`)가
+  // Vercel header보다 우선 적용될 수 있으나 `no-store`만 포함되면 캐시 차단 효과 동일.
   const url = `${BASE_URL}/invoice/${ROW_A_ID}?token=${encodeURIComponent(ROW_A_TOKEN)}`;
   const { res } = await timedFetch(url);
-  const hdrCache = expectHeader(res, "cache-control", "no-store");
+  const cacheCtrl = res.headers.get("cache-control") ?? "";
+  const cacheStore = cacheCtrl.includes("no-store");
   const hdrRobots = expectHeader(res, "x-robots-tag", "noindex, nofollow");
   const hdrRef = expectHeader(res, "referrer-policy", "no-referrer");
-  const ok = hdrCache.ok && hdrRobots.ok && hdrRef.ok;
+  const ok = cacheStore && hdrRobots.ok && hdrRef.ok;
   record(
     "HEADER-1 (invoice)",
     ok,
-    `cache=${hdrCache.actual} robots=${hdrRobots.actual} ref=${hdrRef.actual}`,
+    `cacheStore=${cacheStore} robots=${hdrRobots.actual} ref=${hdrRef.actual}`,
   );
 }
 
