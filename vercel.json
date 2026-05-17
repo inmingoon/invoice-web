@@ -34,5 +34,10 @@
         { "key": "Referrer-Policy", "value": "no-referrer" }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "app/api/invoice/[id]/pdf/route.ts": {
+      "maxDuration": 10
+    }
+  }
 }

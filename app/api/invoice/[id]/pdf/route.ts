@@ -2,6 +2,9 @@ import { createElement } from "react";
 
 import { renderToBuffer } from "@react-pdf/renderer";
 
+// B2: PDF route requires Node.js runtime (Buffer, fs) — explicit to avoid Edge auto-promote
+export const runtime = "nodejs";
+
 import { InvoicePdf } from "@/components/invoice/pdf/invoice-pdf";
 import { loadVerified } from "@/lib/invoice/load-verified";
 import { logger } from "@/lib/logger";

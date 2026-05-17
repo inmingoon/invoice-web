@@ -3,12 +3,34 @@ import type { NextRequest } from "next/server";
 
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 
-/** /admin/* 보호. 세션이 없거나 무효면 /admin-login으로 302 리다이렉트. */
+/**
+ * Admin production gate + session protection.
+ *
+ * Production without ENABLE_ADMIN=1 → 404 both /admin and /admin-login.
+ * Dev/staging or ENABLE_ADMIN=1 → session validation (redirect to login if needed).
+ */
 export async function middleware(req: NextRequest): Promise<NextResponse> {
+  const adminEnabled =
+    process.env.NODE_ENV !== "production" || process.env.ENABLE_ADMIN === "1";
+
+  if (!adminEnabled) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  // Admin enabled: enforce session for /admin/* (but allow /admin-login to proceed)
+  const isAdminPath =
+    req.nextUrl.pathname.startsWith("/admin") &&
+    !req.nextUrl.pathname.startsWith("/admin-login");
+
+  if (!isAdminPath) {
+    return NextResponse.next();
+  }
+
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (await verifySession(token)) {
     return NextResponse.next();
   }
+
   const url = req.nextUrl.clone();
   url.pathname = "/admin-login";
   url.search = "";
@@ -16,5 +38,5 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/admin/:path*", "/admin-login"],
 };
